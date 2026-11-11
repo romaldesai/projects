@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src data:">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS Standby</title>
+
+<style>
+:root {
+  color-scheme: dark;
+  --gold: #ffc675;
+  --gold-rgb: 255,198,117;
+  --status: #ffc675;
+  --status-rgb: 255,198,117;
+  --size: 420px;
+  --center-x: 210px;
+  --center-y: 190px;
+  --ease: cubic-bezier(.22,1,.36,1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  font-family: -apple-system, BlinkMacSystemFont,
+               "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+.orb-hit:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 4px;
+}
+
+#overlay {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: var(--size);
+  height: var(--size);
+  background: transparent;
+  pointer-events: none;
+  overflow: visible;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* All effects are separate from the original orb. */
+
+#overlay.is-hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+#overlay,
+#overlay * {
+  -webkit-app-region: no-drag;
+}
+
+/* ===========================================
+   ORBIT GEOMETRY
+   =========================================== */
+
+.orbit-wheel {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  left: 40px;
+  top: 20px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: orbit-spin 60s linear infinite;
+}
+
+.orbit-wheel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+
+  /* Fine, low-contrast dotted orbit */
+  border: 1px dotted rgba(255,198,117,.22);
+
+  box-shadow:
+    0 0 24px rgba(255,170,60,.035),
+    inset 0 0 22px rgba(255,170,60,.035);
+
+  transition:
+    border-color .3s,
+    box-shadow .3s;
+}
+
+.orbit-wheel::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,198,117,.035);
+  pointer-events: none;
+}
+
+#overlay.orb-hover .orbit-wheel::before,
+.orbit-wheel:has(.action:hover)::before {
+  border-color: rgba(255,205,135,.52);
+  box-shadow:
+    0 0 30px rgba(255,185,85,.1),
+    inset 0 0 20px rgba(255,185,85,.06);
+}
+
+#overlay.pause-orbit .orbit-wheel,
+#overlay.pause-orbit .glyph-orient,
+#overlay.pause-orbit .orbit-wheel::before {
+  animation-play-state: paused;
+}
+
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbit-counterspin {
+  to { transform: rotate(-360deg); }
+}
+
+/* ===========================================
+   PRIMARY ORBIT ICONS
+   =========================================== */
+
+.action {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255,211,155,.82);
+  cursor: pointer;
+  pointer-events: auto;
+
+  transform:
+    translate(-50%,-50%)
+    rotate(var(--angle))
+    translateY(-170px)
+    rotate(calc(-1 * var(--angle)));
+}
+
+.glyph-orient {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  animation: orbit-counterspin 60s linear infinite;
+}
+
+.glyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+
+  background:
+    radial-gradient(circle,
+      rgba(255,180,68,.13) 0%,
+      rgba(255,180,68,.045) 50%,
+      transparent 73%);
+
+  filter: drop-shadow(0 0 5px rgba(255,180,90,.52));
+
+  transition:
+    transform .2s var(--ease),
+    color .2s,
+    background .2s,
+    filter .2s;
+}
+
+.glyph svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
+.action:hover .glyph,
+.action:focus-visible .glyph,
+.action.active .glyph {
+  transform: scale(1.15);
+  color: #ffe7b6;
+  background: radial-gradient(circle,
+    rgba(255,194,100,.27), transparent 72%);
+  filter:
+    drop-shadow(0 0 7px rgba(255,194,100,.9))
+    drop-shadow(0 0 17px rgba(255,166,55,.42));
+}
+
+.action[data-action="record"].active .glyph {
+  color: #ff6a65;
+  filter: drop-shadow(0 0 12px rgba(255,60,60,.9));
+}
+
+.action[data-action="live"].active .glyph {
+  color: #68c5ff;
+  filter: drop-shadow(0 0 12px rgba(70,165,255,.9));
+}
+
+/* ===========================================
+   EXISTING ORB — UNMODIFIED CONTENT
+   =========================================== */
+
+.orb-hit {
+  position: absolute;
+  left: 100px;
+  top: 80px;
+  width: 220px;
+  height: 220px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  cursor: grab;
+  pointer-events: auto;
+  outline: none;
+  touch-action: none;
+  z-index: 3;
+}
+
+.orb-hit.dragging { cursor: grabbing; }
+
+/* This element is only an external wrapper.
+   The original orb is mounted INSIDE it.
+   Its actual shader, colors and particles
+   remain entirely controlled by your code. */
+
+.orb-breath {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+#orbcv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(1.16);pointer-events:none;filter:brightness(1.55) saturate(1.2) drop-shadow(0 0 20px rgba(255,198,117,.78))}
+#original-orb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+/* External status halo only.
+   Does not filter or recolor the orb. */
+
+.orb-halo {
+  position: absolute;
+  inset: -16px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+
+  background: radial-gradient(circle,
+    transparent 47%,
+    rgba(var(--status-rgb),.12) 57%,
+    rgba(var(--status-rgb),.27) 69%,
+    transparent 81%);
+
+  box-shadow:
+    0 0 34px rgba(var(--status-rgb),.18),
+    0 0 78px rgba(var(--status-rgb),.10);
+
+  transition:
+    background .3s,
+    box-shadow .3s;
+}
+
+/* Status is driven by one state variable. */
+
+#overlay[data-state="standby"] {
+  --status: #ffc675;
+  --status-rgb: 255,198,117;
+}
+
+#overlay[data-state="listening"] {
+  --status: #58b9ff;
+  --status-rgb: 88,185,255;
+}
+
+#overlay[data-state="thinking"] {
+  --status: #ffab47;
+  --status-rgb: 255,171,71;
+}
+
+#overlay[data-state="done"] {
+  --status: #65f1ae;
+  --status-rgb: 101,241,174;
+}
+
+#overlay[data-state="recording"],
+#overlay[data-state="error"] {
+  --status: #ff625e;
+  --status-rgb: 255,98,94;
+}
+
+#overlay[data-state="thinking"] .orb-halo {
+  animation: thinking-halo 1.4s ease-in-out infinite;
+}
+
+#overlay[data-state="done"] .orb-halo {
+  animation: success-flash .8s ease-out 1;
+}
+
+#overlay[data-state="error"] .orb-halo,
+#overlay[data-state="recording"] .orb-halo {
+  box-shadow:
+    0 0 22px rgba(255,55,50,.24),
+    0 0 54px rgba(255,55,50,.12);
+}
+
+@keyframes thinking-halo {
+  50% {
+    opacity: .65;
+    transform: scale(1.075);
+  }
+}
+
+@keyframes success-flash {
+  0% { opacity: .2; transform: scale(.92); }
+  35% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ===========================================
+   AUDIO WAVEFORM ARC
+   =========================================== */
+
+.audio-arc {
+  position: absolute;
+  width: 180px;
+  height: 38px;
+  left: 120px;
+  top: 304px;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+  z-index: 4;
+}
+
+#overlay[data-state="listening"] .audio-arc,
+#overlay[data-state="recording"] .audio-arc {
+  opacity: 1;
+}
+
+.audio-arc path {
+  fill: none;
+  stroke: var(--status);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px var(--status));
+  transition: stroke .3s;
+}
+
+/* ===========================================
+   SECONDARY DIRECTIVE RING
+   =========================================== */
+
+.directive-ring {
+  position: absolute;
+  width: 276px;
+  height: 276px;
+  left: 72px;
+  top: 52px;
+  border-radius: 50%;
+  pointer-events: none;
+
+  opacity: 0;
+  transform: scale(.87);
+  transition:
+    opacity .25s var(--ease),
+    transform .35s var(--ease);
+  z-index: 5;
+}
+
+#overlay.ask-open .directive-ring {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.directive-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dotted rgba(255,196,105,.11);
+}
+
+.directive {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  left: 50%;
+  top: 50%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  cursor: pointer;
+
+  display: grid;
+  place-items: center;
+
+  color: #f8c981;
+  background:
+    radial-gradient(circle,
+      rgba(255,178,75,.16),
+      transparent 75%);
+
+  transform:
+    translate(-50%,-50%)
+    rotate(var(--angle))
+    translateY(-138px)
+    rotate(calc(-1 * var(--angle)));
+
+  filter: drop-shadow(0 0 5px rgba(255,178,75,.45));
+  transition: color .2s, filter .2s;
+}
+
+#overlay.ask-open .directive {
+  pointer-events: auto;
+}
+
+.directive svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform .2s var(--ease);
+}
+
+.directive:hover,
+.directive:focus-visible {
+  color: #fff0d1;
+  filter: drop-shadow(0 0 11px rgba(255,195,100,.9));
+}
+
+.directive:hover svg {
+  transform: scale(1.2);
+}
+
+/* ===========================================
+   SINGLE SHARED GLASS TOOLTIP
+   =========================================== */
+
+#tooltip {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+
+  min-width: max-content;
+  max-width: 210px;
+
+  padding: 8px 12px;
+  border-radius: 20px;
+
+  color: #ffe2b2;
+  background: rgba(16,20,27,.86);
+  border: 1px solid rgba(255,197,116,.19);
+
+  box-shadow:
+    0 8px 28px rgba(0,0,0,.32),
+    inset 0 1px rgba(255,255,255,.065),
+    0 0 16px rgba(255,174,66,.085);
+
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .025em;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+
+  opacity: 0;
+  visibility: hidden;
+
+  transform: translateY(4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 150ms;
+
+  /* No backdrop filter on the actual overlay.
+     Tooltip is the only glass surface. */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+#tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* ===========================================
+   ASK JARVIS — MINIMAL INPUT LINE
+   =========================================== */
+
+.ask-area {
+  position: absolute;
+  left: 66px;
+  bottom: 6px;
+  width: 288px;
+  height: 37px;
+  z-index: 12;
+
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition:
+    opacity .25s var(--ease),
+    transform .25s var(--ease);
+}
+
+#overlay.ask-open .ask-area {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.ask-form {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,192,100,.52);
+  box-shadow: 0 7px 10px -10px rgba(255,180,60,.7);
+}
+
+.ask-form::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold);
+}
+
+#ask-input {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ffe7be;
+  caret-color: var(--gold);
+  font-size: 12px;
+  letter-spacing: .025em;
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;
+}
+
+#ask-input::placeholder {
+  color: rgba(255,210,150,.4);
+}
+
+.ask-send {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+}
+
+.ask-send svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ask-send:hover {
+  filter: drop-shadow(0 0 8px var(--gold));
+}
+
+/* Persistent, scrollable conversation panel beneath the orb. */
+#chat-panel {
+  position: absolute;
+  z-index: 14;
+  left: 16px;
+  bottom: -260px;
+  width: 388px;
+  height: 248px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  pointer-events: auto;
+
+  color: #f7fbff;
+  background: rgba(5, 9, 15, .97);
+  border: 1px solid rgba(255, 207, 139, .96);
+  border-radius: 15px;
+  box-shadow: 0 0 28px rgba(255, 183, 83, .34), 0 10px 32px rgba(0,0,0,.55), inset 0 0 18px rgba(255,220,170,.07);
+}
+
+#chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 22px;
+}
+
+#chat-title {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-shadow: 0 0 11px rgba(255, 196, 113, .52);
+}
+
+#reply {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: #ffe0af;
+  font-size: 10px;
+  font-weight: 650;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+#reply.visible { opacity: 1; }
+
+#chat-clear {
+  flex: none;
+  border: 1px solid rgba(255, 213, 163, .7);
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: rgba(255, 191, 102, .18);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#chat-clear:hover, #chat-clear:focus-visible {
+  background: rgba(255, 191, 102, .34);
+  box-shadow: 0 0 12px rgba(255, 190, 105, .3);
+}
+
+#chat-log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 4px 4px;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  scrollbar-color: rgba(255, 206, 145, .75) rgba(255,255,255,.08);
+  scrollbar-width: thin;
+}
+
+#chat-log::-webkit-scrollbar { width: 6px; }
+#chat-log::-webkit-scrollbar-thumb { background: rgba(255, 206, 145, .72); border-radius: 8px; }
+#chat-log::-webkit-scrollbar-track { background: rgba(255,255,255,.08); }
+
+#chat-empty {
+  margin: auto;
+  max-width: 270px;
+  color: #dce8f7;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.chat-message {
+  max-width: 94%;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+  box-shadow: 0 3px 12px rgba(0,0,0,.3);
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  color: #fffaf2;
+  background: rgba(130, 75, 20, .72);
+  border: 1px solid rgba(255, 211, 152, .82);
+}
+
+.chat-message.jarvis {
+  align-self: flex-start;
+  color: #f5f9ff;
+  background: rgba(32, 62, 96, .88);
+  border: 1px solid rgba(174, 211, 255, .78);
+}
+
+.chat-speaker {
+  display: block;
+  margin-bottom: 3px;
+  color: #ffe1b2;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.chat-message.jarvis .chat-speaker { color: #c4e0ff; }
+.chat-message-text { white-space: pre-wrap; }
+
+
+/* Compact "How can I help?" look (smoked glass) */
+#chat-panel{background:rgba(14,16,22,.78);backdrop-filter:blur(22px) saturate(1.3);-webkit-backdrop-filter:blur(22px) saturate(1.3);border:1px solid rgba(255,255,255,.16);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1)}
+#chat-title{font-size:10px;letter-spacing:.2em;font-weight:700;color:rgba(255,255,255,.7);text-shadow:none}
+#chat-clear{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 11px;font-weight:600}
+#chat-clear:hover,#chat-clear:focus-visible{background:rgba(255,255,255,.16);box-shadow:none}
+#chat-empty{display:flex;flex-direction:column;align-items:center;gap:6px;max-width:none;width:100%}
+.we-emblem{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe3a6,#ff9f2e 55%,#7a3b00);box-shadow:0 0 22px rgba(255,170,60,.55)}
+.we-eyebrow{font-size:9px;letter-spacing:.28em;color:rgba(255,255,255,.55)}
+.we-title{font-size:19px;font-weight:650;color:#fff}
+.we-sub{font-size:11px;color:rgba(255,255,255,.6)}
+.we-chip{margin-top:2px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff;border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer}
+.we-chip:hover{background:rgba(255,255,255,.16)}
+.chat-message.user{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}
+.chat-message.jarvis{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
+.chat-message.jarvis .chat-speaker,.chat-speaker{color:rgba(255,255,255,.55)}
+#chat-log{scrollbar-color:rgba(255,255,255,.35) transparent}
+#chat-log::-webkit-scrollbar-thumb{background:rgba(255,255,255,.35)}
+
+/* ===========================================
+   MOTION / ACCESSIBILITY
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .orb-breath,
+  .orbit-wheel,
+  .glyph-orient {
+    animation: none !important;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div id="overlay" data-state="standby">
+
+  <!-- PRIMARY SIX-ICON ORBIT -->
+  <div class="orbit-wheel" id="orbit-wheel">
+
+    <!-- Microphone -->
+    <button class="action"
+      style="--angle:0deg"
+      data-action="record"
+      data-tip="Record Audio"
+      aria-label="Record Audio">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <rect x="9" y="2.5" width="6" height="12" rx="3"/>
+          <path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/>
+          <path d="M12 17v4M8.5 21h7"/>
+        </svg>
+      </span></span>
+    </button>
+
+    <!-- Eye -->
+    <button class="action"
+      style="--angle:60deg"
+      data-action="watch"
+      data-tip="Watch Screen"
+      aria-label="Watch Screen">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </span></span>
+    </button>
+
+    <!-- Sparkle -->
+    <button class="action"
+      style="--angle:120deg"
+      data-action="look"
+      data-tip="Look Now"
+      aria-label="Look Now">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2 14.4 9.6 22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4Z"/>
+        </svg>
+      </span></span>
+    </button>
+
+    <!-- Waveform -->
+    <button class="action"
+      style="--angle:180deg"
+      data-action="live"
+      data-tip="Live Commands"
+      aria-label="Toggle Live Commands"
+      aria-pressed="false">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <path d="M2 12h2m2-5v10m3-13v16m3-11v6m3-13v20m3-15v10m2-5h2"/>
+        </svg>
+      </span></span>
+    </button>
+
+    <!-- Chat -->
+    <button class="action"
+      style="--angle:240deg"
+      data-action="ask"
+      data-tip="Ask Jarvis"
+      aria-label="Ask Jarvis"
+      aria-expanded="false">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <path d="M20.5 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.7-4.6A8.5 8.5 0 1 1 20.5 11.5Z"/>
+          <path d="M8 12h8"/>
+        </svg>
+      </span></span>
+    </button>
+
+    <!-- Trash -->
+    <button class="action"
+      style="--angle:300deg"
+      data-action="clear"
+      data-tip="Clear"
+      aria-label="Clear">
+      <span class="glyph-orient"><span class="glyph">
+        <svg viewBox="0 0 24 24">
+          <path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/>
+          <path d="M10 11v6M14 11v6"/>
+        </svg>
+      </span></span>
+    </button>
+
+  </div>
+
+  <!-- ORIGINAL GOLDEN ORB SLOT -->
+  <div class="orb-hit" id="orb-hit"
+       role="button" tabindex="0"
+       aria-label="Jarvis orb — standby">
+
+    <div class="orb-breath">
+      <div class="orb-halo"></div>
+
+      <div id="original-orb"><canvas id="orbcv"></canvas></div>
+    </div>
+  </div>
+
+  <!-- LISTENING WAVEFORM ARC -->
+  <svg class="audio-arc" id="audio-arc"
+       viewBox="0 0 180 38"
+       aria-hidden="true">
+    <path id="audio-path" d="M0 15 Q90 40 180 15"/>
+  </svg>
+
+  <!-- FIVE DIRECTIVES: SECONDARY RING -->
+  <div class="directive-ring" id="directive-ring">
+
+    <button class="directive"
+      style="--angle:0deg"
+      data-directive="Summarize Screen"
+      aria-label="Summarize Screen">
+      <svg viewBox="0 0 24 24">
+        <path d="M5 3h10l4 4v14H5Z"/>
+        <path d="M15 3v4h4M8 11h8M8 15h8M8 19h5"/>
+      </svg>
+    </button>
+
+    <button class="directive"
+      style="--angle:72deg"
+      data-directive="What Now?"
+      aria-label="What Now?">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+        <circle cx="12" cy="12" r="5"/>
+        <path d="m10 14 4-4"/>
+      </svg>
+    </button>
+
+    <button class="directive"
+      style="--angle:144deg"
+      data-directive="Draft Reply"
+      aria-label="Draft Reply">
+      <svg viewBox="0 0 24 24">
+        <path d="M4 4h16v12H8l-4 4Z"/>
+        <path d="M8 9h8M8 12h5"/>
+      </svg>
+    </button>
+
+    <button class="directive"
+      style="--angle:216deg"
+      data-directive="Meeting Notes"
+      aria-label="Meeting Notes">
+      <svg viewBox="0 0 24 24">
+        <rect x="5" y="4" width="14" height="17" rx="2"/>
+        <path d="M9 2v4M15 2v4M8 10h8M8 14h8M8 18h5"/>
+      </svg>
+    </button>
+
+    <button class="directive"
+      style="--angle:288deg"
+      data-directive="What Do I Say?"
+      aria-label="What Do I Say?">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 5h18v12H9l-5 4v-4H3Z"/>
+        <path d="M8 10h8M12 13h.01"/>
+      </svg>
+    </button>
+
+  </div>
+
+  <!-- SINGLE SHARED TOOLTIP -->
+  <div id="tooltip" role="tooltip"></div>
+
+  <!-- FULL CHAT HISTORY -->
+  <section id="chat-panel" aria-label="Jarvis chat">
+    <header id="chat-header">
+      <span id="chat-title">JARVIS</span>
+      <div id="reply" role="status" aria-live="polite"></div>
+      <button id="chat-clear" type="button" aria-label="Start a new chat">New chat</button>
+    </header>
+    <div id="chat-log" role="log" aria-live="polite" aria-relevant="additions text">
+      <div id="chat-empty">
+        <span class="we-emblem" aria-hidden="true"></span>
+        <span class="we-eyebrow">JARVIS</span>
+        <strong class="we-title">How can I help?</strong>
+        <span class="we-sub">Ask anything, or let me look at your screen.</span>
+        <button type="button" class="we-chip" data-q="Help me think something through">Think something through</button>
+        <button type="button" class="we-chip" data-q="screen: help me with what is on my screen">Get help with my screen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MINIMAL ASK LINE -->
+  <div class="ask-area" id="ask-area">
+    <form class="ask-form" id="ask-form">
+      <input
+        id="ask-input"
+        type="text"
+        placeholder="Ask Jarvis… or screen: open a study guide"
+        maxlength="1000"
+        autocomplete="off"
+        aria-label="Ask Jarvis">
+      <button class="ask-send"
+        type="submit"
+        aria-label="Send">
+        <svg viewBox="0 0 24 24">
+          <path d="m4 12 16-8-5 16-3-7Z"/>
+          <path d="m12 13 8-9"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<script src="orb3d.js"></script>
+<script src="ring-bridge.js"></script>
+<script src="ring-overlay.js"></script>
+<script>
+document.addEventListener("click",e=>{const c=e.target.closest(".we-chip");if(!c)return;const i=document.getElementById("ask-input"),f=document.getElementById("ask-form");i.value=c.dataset.q;f.requestSubmit();});
+</script>
+</body></html>
